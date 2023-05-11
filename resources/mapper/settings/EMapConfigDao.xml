@@ -1,0 +1,268 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.jeeplus.modules.settings.dao.EMapConfigDao">
+
+	<sql id="tChannelColumns">
+		CONCAT(a.id)  AS "id",
+		a.dev_id AS "devId",
+		a.logic_org_id AS "logicOrgId",
+		a.ch_no AS "chNo",
+		a.ch_type AS "chType",
+		a.type_id AS "typeId",
+		a.name AS "name",
+		a.coords_x AS "coordsX",
+		a.coords_y AS "coordsY",
+		a.not_use AS "notUse",
+		a.remarks AS "remarks",
+		a.del_flag AS "delFlag" ,
+		b.name AS "codeName",
+		b.icon_skin AS "iconSkin",
+		b.warn_icon_skin AS	"warnIconSkin"
+	</sql>
+
+	<sql id="tChannelJoins">
+		LEFT JOIN t_code b ON a.type_id = b.type_id and a.ch_type = b.id
+	</sql>
+
+	<select id="getChannelListByOrgId" resultType="java.util.HashMap">
+		SELECT
+		<include refid="tChannelColumns" />
+		FROM t_channel a
+		<include refid="tChannelJoins" />
+		<where>
+			a.del_flag = 0 AND a.not_use = 0
+			<if test="orgId != null and orgId != ''">
+				AND a.logic_org_id = #{orgId}
+			</if>
+		</where>
+	</select>
+
+	<select id="getDeviceListByOrgId" resultType="java.util.HashMap">
+		SELECT
+		CONCAT(a.id)  AS "id",
+		a.org_id AS "orgId",
+		a.parent_id as "parentId",
+		a.name AS "name",
+		a.coords_x AS "coordsX",
+		a.coords_y AS "coordsY",
+		b.name AS "codeName",
+		b.icon_skin AS "iconSkin",
+		b.warn_icon_skin AS "warnIconSkin"
+		FROM 
+		t_device a
+		LEFT JOIN t_code b ON a.type_id = b.type_id and a.dev_type = b.id
+		<where>
+			a.del_flag = 0 AND a.not_use = 0
+			<if test="orgId != null and orgId != ''">
+				AND a.org_id = #{orgId}
+			</if>
+		</where>
+	</select>
+		
+	<!-- 设备字典 -->
+	<select id="eMapSelect" resultType="com.jeeplus.common.persistence.MapEntity">
+		SELECT
+		a.id as id,
+		a.icon_skin as iconSkin,
+		a.name as name,
+		a.type_id as typeId
+		from t_code a
+		INNER JOIN t_device b on a.id = b.dev_type
+		and a.type_id = b.type_id where org_id=#{orgId}  and b.coords_x is null and b.coords_y is null
+		GROUP BY a.id ,a.type_id
+	</select>	
+	
+	<!-- 通道字典 -->
+	<select id="eMapChannelSelect" resultType="com.jeeplus.common.persistence.MapEntity">
+		SELECT
+		 a.id as id ,
+		 a.icon_skin as iconSkin,
+		 a.name as name,
+		 a.type_id as typeId 
+		 from 
+		 t_code a 
+		 INNER JOIN t_channel b on a.id = b.ch_type and a.type_id = b.type_id
+		  where
+		  b.logic_org_id=#{orgId}  
+		  and b.coords_x is null 
+		  and b.coords_y is null
+		  GROUP BY a.id,a.type_id
+	</select>
+	
+    <!-- 	获取类型集合 -->
+	<select id="getCodeList" resultType="com.jeeplus.common.persistence.MapEntity">
+		select 
+		b.id,
+		b.name,
+		b.type_id typeId,
+		CONCAT('/static_modules/device/',b.icon_skin) iconSkin
+		from
+		pdf_code a 
+		inner join	t_code b on a.dev_type = b.id	and a.type_id = b.type_id
+		left join t_device t on t.dev_type = b.id and t.type_id = b.type_id
+		left join pdf_image_dev_ch fo on fo.dev_ch_id = t.id and t.type_id = fo.type_id
+		where 
+		a.`status` = 6 and fo.dev_ch_id is null and org_id = #{orgId}  GROUP BY t.dev_type
+	    
+		UNION ALL
+	    
+		SELECT
+		m.id,
+		m.name,
+		m.type_id typeId,
+		CONCAT('/static_modules/channel/',m.icon_skin) iconSkin
+		from
+		t_channel t 
+		inner JOIN
+		(select b.* 
+		from pdf_code a inner join t_code b on a.dev_type = b.id and a.type_id = b.type_id
+		where
+		a.`status` = 6 and a.type_id != 1) m	
+		on t.channel_type = m.id and t.type_id = m.type_id
+		left join pdf_image_dev_ch fo on fo.dev_ch_id = t.id and t.type_id = fo.type_id
+		where 
+		logic_org_id = #{orgId} and fo.dev_ch_id is null GROUP BY m.id
+	</select>
+    
+	<select id="devList" resultType="com.jeeplus.common.persistence.MapEntity">
+		select 
+		CONCAT(a.id) id,
+		IFNULL(a.addr,'') addr,
+		t.name,
+		a.dev_type devTypeId,
+		a.type_id typeId,
+		substring_index(b.mac,'_', -1) mac,
+		CONCAT('/static_modules/device/',t.icon_skin) iconSkin
+		from 
+		t_device a 
+		LEFT JOIN t_device_detail b on a.id = b.id
+		left join t_code t on t.id = a.dev_type and t.type_id = a.type_id
+		left join pdf_image_dev_ch d on d.dev_ch_id = a.id and a.type_id = d.type_id
+		where
+		a.dev_type =#{devTypeId} and a.org_id =#{orgId} and d.dev_ch_id is null
+	</select>
+
+	<select id="chList" resultType="com.jeeplus.common.persistence.MapEntity">	
+	    select 
+	    CONCAT(a.id) id,
+	    a.channel_type devTypeId,
+	    a.type_id typeId,
+	    IFNULL(a.addr,'') addr,
+	    t.name,
+	    ch_no mac,
+	    CONCAT('/static_modules/channel/',t.icon_skin)	iconSkin
+	    from t_channel a 
+	    inner join t_code t on t.id =	a.channel_type and t.type_id = a.type_id
+		left join pdf_image_dev_ch d on d.dev_ch_id = a.id and a.type_id = d.type_id
+		where
+		a.channel_type =#{devTypeId} and a.type_id= #{typeId} and a.logic_org_id =#{orgId}
+		and d.dev_ch_id is null			
+    </select>    
+    
+    <update id="updateDevCoords">
+	    update t_device set coords_x = #{coordsX} ,coords_y = #{coordsY} where id = #{id}
+    </update>
+
+	<update id="updateChCoords">
+		update t_channel set coords_x = #{coordsX} ,coords_y = #{coordsY} where id = #{id}
+	</update>
+	
+	<update id="insertImageDevId">
+		INSERT into pdf_image_dev_ch(id,pdf_image_id,dev_ch_id,type_id) values(#{id},#{pdfImageId},#{devChId},#{typeId});
+	</update>		
+		
+	<update id="deleteImageDevIdById">
+		delete from pdf_image_dev_ch where id = #{id}
+	</update>	
+		
+	<update id="deleteImageDevId">
+		delete from pdf_image_dev_ch where dev_ch_id = #{devChId} and type_id= #{typeId}
+	</update>
+	
+	<delete id="deleteImageDev">
+    	delete from pdf_image_dev_ch where pdf_image_id = #{pdfImageId}
+	</delete>
+
+	<select id="selectImageDevList" resultType="com.jeeplus.common.persistence.MapEntity">
+		SELECT
+		 concat(b.id) id,
+		 CONCAT(a.id)  devId,
+		 concat(a.type_id) typeId,
+		 t.name,
+		 IFNULL(a.addr,'') addr,
+		 IFNULL(a.coords_x,100)	coordsX,
+		concat(t.id) devTypeId,
+		IFNULL(a.coords_y,100) coordsY,
+		case when trd.warn = 0  or trd.warn is null then	CONCAT('/static_modules/channel/',t.icon_skin) else CONCAT('/static_modules/channel/',t.warn_icon_skin) end iconSkin,
+		a.ch_no mac
+		from
+		t_channel a
+		left join t_real_data trd on trd.id = a.id
+		inner join (SELECT * from pdf_image_dev_ch where pdf_image_id = #{pdfImageId} and type_id != 1) b on a.id = b.dev_ch_id
+		LEFT JOIN t_code t on t.id= a.channel_type and t.type_id = a.type_id
+		where a.logic_org_id = #{orgId}
+		
+		UNION all
+	
+		SELECT 
+		concat(b.id) id,
+		CONCAT(a.id)  devId,
+		concat(a.type_id) typeId,
+		t.name,
+		IFNULL(a.addr,'') addr,
+		IFNULL(a.coords_x,100) coordsX,
+		concat(t.id) devTypeId,
+		IFNULL(a.coords_y,150) coordsY,
+		case when de.online = 0 then CONCAT('/static_modules/device/',t.offline_icon_skin) 
+		when max(trd.warn) = 0 then CONCAT('/static_modules/device/',t.icon_skin) else CONCAT('/static_modules/device/',t.warn_icon_skin) end iconSkin,
+		substring_index(de.mac,'_', -1) mac
+		from
+		t_device a 
+		left join t_device_detail de on de.id = a.id
+		left join t_channel tc on tc.dev_id = a.id
+		left join t_real_data trd on trd.id = tc.id
+		inner join (SELECT * from pdf_image_dev_ch where pdf_image_id = #{pdfImageId} and type_id = 1) b on a.id = b.dev_ch_id
+		LEFT JOIN t_code t on t.id= a.dev_type and t.type_id = a.type_id
+		where a.org_id = #{orgId} GROUP BY a.id
+	</select>
+	
+	<select id="getUserList" resultType="com.jeeplus.common.persistence.MapEntity">
+	    SELECT concat(id) id,name,mobile from sys_user
+	</select>
+	
+	<select id="getImageDev" resultType="com.jeeplus.common.persistence.MapEntity">
+	    select CONCAT(id) id,CONCAT(org_id) orgId,name from pdf_org_image where id=#{id}
+    </select>
+
+	<select id="getLowValue" resultType="com.jeeplus.common.persistence.MapEntity">
+		select 
+		low_value lowValue 
+		from 
+		t_alarm_policy where ch_id = #{chId}
+	</select>
+	
+	<select id="getTypeList" resultType="com.jeeplus.common.persistence.MapEntity">
+		select 
+		a.ch_type chType,
+		a.type_id typeId,
+		b.dev_type devType,
+		b.org_id orgId
+		from 
+		t_channel a
+		INNER JOIN t_device b on a.dev_id = b.id
+		where a.id = #{chId}
+	</select>
+	
+	<update id="updatePdfImageContain"> 
+	    UPDATE
+	    pdf_org_image 
+	    set container_width = #{containerWidth},
+	    container_height = #{containerHeight}
+	    where
+	    id = #{officeImageId}
+	</update>
+	
+	<update id="updateImageById">
+	    update pdf_org_image set image =#{image} where id = #{imageId}
+	</update>
+</mapper>
